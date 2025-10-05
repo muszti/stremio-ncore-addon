@@ -156,7 +156,8 @@ export class StreamService {
     }
 
     const typeLine = `${languageEmoji} | ${torrent.displayResolution(torrent.getResolution(file.name))} | ${fileSizeString}\n`;
-    const title = isShow ? `${file.name}\n` : `${torrent.getName()}\n`;
+    let title = isShow ? `${file.name}` : `${torrent.getName()}`;
+    title += `.${torrent.displayResolutionOnly(torrent.getResolution(file.name))}\n`;
     const seeders = `👤 ${torrent.getSeeders()}\n`;
     return warningLine + recommendedLine + typeLine + title + seeders;
   }
