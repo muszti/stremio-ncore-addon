@@ -352,6 +352,14 @@ func getContentType(filepath string) string {
 		return "audio/mpeg"
 	case ".wav":
 		return "audio/wav"
+	case ".srt":
+		return "text/plain; charset=utf-8"
+	case ".sub":
+		return "text/plain; charset=utf-8"
+	case ".ass", ".ssa":
+		return "text/plain; charset=utf-8"
+	case ".vtt":
+		return "text/vtt; charset=utf-8"
 	default:
 		return "application/octet-stream"
 	}
