@@ -194,6 +194,23 @@ func main() {
 		c.JSON(http.StatusOK, responses.TorrentToResponse(torrent, c.Query("files") != "0"))
 	})
 
+	// Plain-text dump of peers, trackers and piece state for debugging stalled torrents
+	r.GET("/debug/status", func(c *gin.Context) {
+		client.WriteStatus(c.Writer)
+	})
+
+	r.POST("/torrents/:infoHash/download", func(c *gin.Context) {
+		infoHash := c.Param("infoHash")
+		torrent, ok := client.Torrent(infohash.FromHexString(infoHash))
+		if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Torrent not found"})
+			return
+		}
+		// Not persisted: has to be requested again if the server restarts before completion
+		torrent.DownloadAll()
+		c.JSON(http.StatusOK, responses.TorrentToResponse(torrent))
+	})
+
 	r.DELETE("/torrents/:infoHash", func(c *gin.Context) {
 		infoHash := c.Param("infoHash")
 		torrent, ok := lookupTorrent(c, client)

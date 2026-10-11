@@ -10,6 +10,22 @@ export class TorrentController {
     return c.json(stats);
   }
 
+  public async downloadAll(c: Context) {
+    const { infoHash } = c.req.param();
+    if (!infoHash) {
+      throw new HTTPException(HttpStatusCode.BAD_REQUEST, {
+        message: 'Bad Request',
+        cause: 'Missing infohash in params',
+      });
+    }
+    try {
+      await this.torrentStoreService.downloadAll(infoHash);
+      return c.json({ success: true, error: undefined });
+    } catch (error) {
+      return c.json({ success: false, error: `${error}` });
+    }
+  }
+
   public async deleteTorrent(c: Context) {
     const { infoHash } = c.req.param();
     if (!infoHash) {

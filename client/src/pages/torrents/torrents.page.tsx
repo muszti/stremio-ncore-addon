@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { PropsWithChildren } from 'react';
 import { Redirect } from 'wouter';
 import { DeleteTorrentButton } from './components/delete-torrent-button';
+import { ForceDownloadButton } from './components/force-download-button';
 import { TORRENTS_QUERY_KEY } from './constants';
 import { UserRole } from '@server/db/schema/users';
 
@@ -98,7 +99,12 @@ export const TorrentsPage = () => {
                 <TableCell>{torrent.progress}</TableCell>
                 <TableCell>
                   {user?.role === UserRole.ADMIN && (
-                    <DeleteTorrentButton torrent={torrent} />
+                    <div className="flex gap-2">
+                      {torrent.progress !== '100.00%' && (
+                        <ForceDownloadButton torrent={torrent} />
+                      )}
+                      <DeleteTorrentButton torrent={torrent} />
+                    </div>
                   )}
                 </TableCell>
               </TableRow>

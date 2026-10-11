@@ -109,6 +109,11 @@ export class TorrentStoreService {
     return torrent;
   }
 
+  public async downloadAll(infoHash: string): Promise<void> {
+    this.checkServer();
+    return await this.torrentServerSdk.downloadAll(infoHash);
+  }
+
   public async deleteTorrent(infoHash: string): Promise<void> {
     this.checkServer();
     return await this.torrentServerSdk.deleteTorrent(infoHash);

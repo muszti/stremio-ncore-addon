@@ -89,6 +89,18 @@ export class TorrentServerSdk {
     return torrent;
   }
 
+  public async downloadAll(infoHash: InfoHash): Promise<void> {
+    const req = await fetch(`${this.url}/torrents/${infoHash}/download`, {
+      method: 'POST',
+    });
+    if (!req.ok) {
+      const responseText = await req.text();
+      throw Error(
+        `Could not force full download. Status code: ${req.status}. Error: ${responseText}`,
+      );
+    }
+  }
+
   public async deleteTorrent(infoHash: InfoHash): Promise<void> {
     const req = await serverFetch(
       'delete torrent',
