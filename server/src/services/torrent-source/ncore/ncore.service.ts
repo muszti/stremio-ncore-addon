@@ -22,6 +22,9 @@ import { CinemeatService } from '@/services/cinemeta';
 import { isSupportedMedia } from '@/utils/media-file-extensions';
 import { Cached, DEFAULT_MAX, DEFAULT_TTL } from '@/utils/cache';
 
+const REQUEST_TIMEOUT_MS = 20_000;
+const SESSION_COOKIE_TTL_MS = 30 * 60_000;
+
 export class NcoreService implements TorrentSource {
   public name = 'ncore';
   public displayName = 'nCore';
@@ -37,6 +40,12 @@ export class NcoreService implements TorrentSource {
     pass: null as string | null,
     cookieExpirationDate: 0,
   };
+  private loginInFlight: Promise<string> | null = null;
+
+  public invalidateCookies() {
+    this.cookiesCache.pass = null;
+    this.cookiesCache.cookieExpirationDate = 0;
+  }
 
   public async getCookies(username: string, password: string): Promise<string> {
     if (
@@ -45,6 +54,16 @@ export class NcoreService implements TorrentSource {
     ) {
       return this.cookiesCache.pass;
     }
+    // dedupe concurrent logins (e.g. parallel result pages with a cold cache)
+    if (!this.loginInFlight) {
+      this.loginInFlight = this.login(username, password).finally(() => {
+        this.loginInFlight = null;
+      });
+    }
+    return this.loginInFlight;
+  }
+
+  private async login(username: string, password: string): Promise<string> {
     const form = new FormData();
     form.append('set_lang', 'hu');
     form.append('submitted', '1');
@@ -55,20 +74,28 @@ export class NcoreService implements TorrentSource {
       method: 'POST',
       body: form,
       redirect: 'manual',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     const allCookies = cookieParser.parse(resp.headers.getSetCookie());
     const passCookie = allCookies.find(({ name }) => name === 'pass');
 
     if (!passCookie || passCookie.value === 'deleted') {
-      throw new Error('Failed to log in to nCore. No pass cookie found');
+      throw new Error(
+        `Failed to log in to nCore. No pass cookie found (status ${resp.status})`,
+      );
     }
     const fullCookieString = allCookies
       .map(({ name, value }) => `${name}=${value}`)
       .join('; ');
     this.cookiesCache.pass = fullCookieString;
-    if (passCookie.expires) {
-      this.cookiesCache.cookieExpirationDate = passCookie.expires.getTime();
-    }
+    // Session cookies (no expires / max-age) get a conservative TTL so that we do not
+    // log in again on every call.
+    const now = Date.now();
+    this.cookiesCache.cookieExpirationDate = passCookie.expires
+      ? passCookie.expires.getTime()
+      : passCookie.maxAge
+        ? now + passCookie.maxAge * 1000
+        : now + SESSION_COOKIE_TTL_MS;
 
     return fullCookieString;
   }
@@ -83,17 +110,30 @@ export class NcoreService implements TorrentSource {
     }
   }
 
-  private async fetchTorrents(query: URLSearchParams): Promise<NcorePageResponseJson> {
+  private async fetchTorrents(
+    query: URLSearchParams,
+    isRetry = false,
+  ): Promise<NcorePageResponseJson> {
     const cookies = await this.getCookies(this.ncoreUsername, this.ncorePassword);
     const request = await fetch(`${this.ncoreUrl}/torrents.php?${query.toString()}`, {
       headers: {
         cookie: cookies,
       },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (request.headers.get('content-type')?.includes('application/json')) {
       return (await request.json()) as NcorePageResponseJson;
     }
-    // the API returns HTML if there are no results
+    // the API returns HTML if there are no results, but also when the session is dead
+    const html = await request.text();
+    if (request.url.includes('login.php') || html.includes('name="nev"')) {
+      this.invalidateCookies();
+      if (!isRetry) {
+        return this.fetchTorrents(query, true);
+      }
+      // throw instead of returning [] so that the failure is not cached
+      throw new Error('nCore session is not valid, even after logging in again.');
+    }
     return {
       results: [],
       total_results: '0',
@@ -200,7 +240,7 @@ export class NcoreService implements TorrentSource {
     return torrents;
   }
 
-  public async getTorrentUrlBySourceId(ncoreId: string) {
+  public async getTorrentUrlBySourceId(ncoreId: string): Promise<string | null> {
     const cookies = await this.getCookies(this.ncoreUsername, this.ncorePassword);
     const response = await fetch(
       `${this.ncoreUrl}/torrents.php?action=details&id=${ncoreId}`,
@@ -208,21 +248,24 @@ export class NcoreService implements TorrentSource {
         headers: {
           cookie: cookies,
         },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       },
     );
 
     const html = await response.text();
     const { document } = new JSDOM(html).window;
-    const downloadLink = `${this.ncoreUrl}/${document
-      .querySelector('.download > a')
-      ?.getAttribute('href')}`;
-    return downloadLink;
+    const href = document.querySelector('.download > a')?.getAttribute('href');
+    if (!href) {
+      return null;
+    }
+    return `${this.ncoreUrl}/${href}`;
   }
 
   public async getRemovableInfoHashes(): Promise<string[]> {
     const cookie = await this.getCookies(this.ncoreUsername, this.ncorePassword);
     const request = await fetch(`${this.ncoreUrl}/hitnrun.php?showall=true`, {
       headers: { cookie },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     const html = await request.text();
     const { document } = new JSDOM(html).window;
@@ -241,6 +284,9 @@ export class NcoreService implements TorrentSource {
 
     const deletableTorrentPromises = deletableNcoreIds.map(async (ncoreId) => {
       const downloadUrl = await this.getTorrentUrlBySourceId(ncoreId);
+      if (!downloadUrl) {
+        throw new Error(`No download link found for nCore id ${ncoreId}`);
+      }
       const torrent = await this.torrentService.downloadAndParseTorrent(downloadUrl);
       return torrent;
     });

@@ -19,7 +19,7 @@ index bf10aa1a3d64c831ff48590bb768e6079a1b36f8..9094cd35fb49f0ab1e2fca20eb0ba20e
      /**
       * Name of the stream
       *
-@@ -398,22 +403,39 @@ export interface Stream {
+@@ -398,22 +403,43 @@ export interface Stream {
           */
          notWebReady?: boolean | undefined;
          /**
@@ -66,6 +66,10 @@ index bf10aa1a3d64c831ff48590bb768e6079a1b36f8..9094cd35fb49f0ab1e2fca20eb0ba20e
           */
 -        headers?: any;
 +        filename?: string;
++        /**
++         * Number of seeders (fork extension, read by AIOStreams).
++         */
++        seeders?: number;
 +        
      } | undefined;
  }

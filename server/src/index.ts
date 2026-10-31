@@ -97,7 +97,11 @@ const streamController = new StreamController(
 );
 const torrentController = new TorrentController(torrentStoreService);
 
-torrentStoreService.loadExistingTorrents();
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason);
+});
+
+torrentStoreService.loadExistingTorrents().catch(console.error);
 
 configService.scheduleDeleteAfterHitnrunCron();
 

@@ -5,6 +5,8 @@ import { writeFileWithCreateDir } from '@/utils/files';
 import { env } from '@/env';
 import { Cached, DEFAULT_TTL } from '@/utils/cache';
 
+const DOWNLOAD_TIMEOUT_MS = 20_000;
+
 export class TorrentService {
   @Cached({
     max: 1_000,
@@ -15,7 +17,14 @@ export class TorrentService {
   public async downloadAndParseTorrent(
     torrentUrl: string,
   ): Promise<ParsedTorrentDetails> {
-    const torrentResponse = await fetch(torrentUrl);
+    const torrentResponse = await fetch(torrentUrl, {
+      signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+    });
+    if (!torrentResponse.ok) {
+      throw new Error(
+        `Failed to download torrent file. Status: ${torrentResponse.status}`,
+      );
+    }
     const buffer = await torrentResponse.arrayBuffer();
     const torrentData = await parseTorrent(new Uint8Array(buffer));
     return {
@@ -34,7 +43,12 @@ export class TorrentService {
    * @returns the path to the downloaded torrent file
    */
   public async downloadTorrentFile(torrentUrl: string): Promise<string> {
-    const torrentReq = await fetch(torrentUrl);
+    const torrentReq = await fetch(torrentUrl, {
+      signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+    });
+    if (!torrentReq.ok) {
+      throw new Error(`Failed to download torrent file. Status: ${torrentReq.status}`);
+    }
     const torrentArrayBuffer = await torrentReq.arrayBuffer();
     const parsedTorrent = await parseTorrent(new Uint8Array(torrentArrayBuffer));
     // torrent file name without the .torrent extension

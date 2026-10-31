@@ -3,6 +3,11 @@ module github.com/detarkende/stremio-ncore-addon/torrent-server
 go 1.24.0
 
 require (
+	github.com/anacrolix/torrent v1.58.1
+	github.com/gin-gonic/gin v1.10.0
+)
+
+require (
 	github.com/RoaringBitmap/roaring v1.9.4 // indirect
 	github.com/ajwerner/btree v0.0.0-20211221152037-f427b3e689c0 // indirect
 	github.com/alecthomas/atomic v0.1.0-alpha2 // indirect
@@ -19,7 +24,6 @@ require (
 	github.com/anacrolix/multiless v0.4.0 // indirect
 	github.com/anacrolix/stm v0.5.0 // indirect
 	github.com/anacrolix/sync v0.5.3 // indirect
-	github.com/anacrolix/torrent v1.58.1 // indirect
 	github.com/anacrolix/upnp v0.1.4 // indirect
 	github.com/anacrolix/utp v0.2.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
@@ -36,7 +40,6 @@ require (
 	github.com/edsrzf/mmap-go v1.2.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/gin-contrib/sse v1.0.0 // indirect
-	github.com/gin-gonic/gin v1.10.0 // indirect
 	github.com/go-llsqlite/adapter v0.2.0 // indirect
 	github.com/go-llsqlite/crawshaw v0.5.5 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect

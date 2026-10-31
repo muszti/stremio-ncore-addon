@@ -8,7 +8,11 @@ import type { TorrentStoreService } from '@/services/torrent-store';
 import { playSchema } from '@/schemas/play.schema';
 import { proxy } from 'hono/proxy';
 import { HttpStatusCode } from '@/types/http';
+import type { TorrentResponse } from '@/services/torrent-store/types';
 import type { TorrentSourceManager } from '@/services/torrent-source';
+import { TorrentServerTimeoutError } from '@/services/torrent-store/torrent-server.sdk';
+
+const PROXY_HEADERS_TIMEOUT_MS = 30_000;
 
 export class StreamController {
   constructor(
@@ -31,12 +35,16 @@ export class StreamController {
 
     const user = await this.userService.getUserByDeviceTokenOrThrow(deviceToken);
 
-    const torrents = await this.torrentSource.getTorrentsForImdbId({
+    const allTorrents = await this.torrentSource.getTorrentsForImdbId({
       imdbId,
       type,
       season,
       episode,
     });
+    // never emit a stream for a torrent without a matching media file (index -1)
+    const torrents = allTorrents.filter(
+      (torrent) => torrent.getMediaFileIndex({ season, episode }) >= 0,
+    );
 
     const orderedTorrents = await this.streamService.orderTorrents({
       torrents,
@@ -71,29 +79,79 @@ export class StreamController {
     }
     const { sourceName, sourceId, infoHash, fileIdx } = result.data;
 
-    let torrent = await this.torrentStoreService.getTorrent(infoHash);
-
-    if (!torrent) {
-      const torrentUrl = await this.torrentSource.getTorrentUrlBySourceId({
-        sourceId,
-        sourceName,
-      });
-      if (!torrentUrl) {
-        throw new HTTPException(HttpStatusCode.NOT_FOUND, {
-          message: 'Torrent not found',
+    let torrent: TorrentResponse;
+    try {
+      torrent = await this.getOrAddTorrent({ infoHash, sourceId, sourceName });
+    } catch (e) {
+      if (e instanceof TorrentServerTimeoutError) {
+        console.error(e.message);
+        throw new HTTPException(HttpStatusCode.SERVICE_UNAVAILABLE, {
+          res: new Response('Torrent server is busy, try again shortly.', {
+            status: HttpStatusCode.SERVICE_UNAVAILABLE,
+            headers: { 'Retry-After': '10' },
+          }),
         });
       }
-      const torrentFilePath = await this.torrentService.downloadTorrentFile(torrentUrl);
-      torrent = await this.torrentStoreService.addTorrent(torrentFilePath);
+      throw e;
     }
-    const file = torrent.files[Number(fileIdx)]!;
+    const file = torrent.files[fileIdx];
+    if (!file) {
+      throw new HTTPException(HttpStatusCode.NOT_FOUND, {
+        message: 'File not found in torrent',
+      });
+    }
 
-    return proxy(
-      this.torrentStoreService.getFileStreamingUrl({
-        infoHash: torrent.infoHash,
-        filePath: file.path,
-      }),
-      { headers: { ...c.req.header() } },
-    );
+    // Only bound the time until response headers arrive. Once the Response is
+    // returned the timer is cleared, so the stream itself has no total timeout.
+    const controller = new AbortController();
+    const headersTimer = setTimeout(() => controller.abort(), PROXY_HEADERS_TIMEOUT_MS);
+    try {
+      return await proxy(
+        this.torrentStoreService.getFileStreamingUrl({
+          infoHash: torrent.infoHash,
+          filePath: file.path,
+        }),
+        { headers: { ...c.req.header() }, signal: controller.signal },
+      );
+    } catch (e) {
+      if (controller.signal.aborted) {
+        console.error('Timed out waiting for torrent server stream headers.');
+        throw new HTTPException(HttpStatusCode.SERVICE_UNAVAILABLE, {
+          res: new Response('Torrent server is busy, try again shortly.', {
+            status: HttpStatusCode.SERVICE_UNAVAILABLE,
+            headers: { 'Retry-After': '10' },
+          }),
+        });
+      }
+      throw e;
+    } finally {
+      clearTimeout(headersTimer);
+    }
+  }
+
+  private async getOrAddTorrent({
+    infoHash,
+    sourceId,
+    sourceName,
+  }: {
+    infoHash: string;
+    sourceId: string;
+    sourceName: string;
+  }): Promise<TorrentResponse> {
+    const existing = await this.torrentStoreService.getTorrent(infoHash);
+    if (existing) {
+      return existing;
+    }
+    const torrentUrl = await this.torrentSource.getTorrentUrlBySourceId({
+      sourceId,
+      sourceName,
+    });
+    if (!torrentUrl) {
+      throw new HTTPException(HttpStatusCode.NOT_FOUND, {
+        message: 'Torrent not found',
+      });
+    }
+    const torrentFilePath = await this.torrentService.downloadTorrentFile(torrentUrl);
+    return await this.torrentStoreService.addTorrent(torrentFilePath);
   }
 }

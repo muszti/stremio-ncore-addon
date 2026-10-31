@@ -90,6 +90,12 @@ If you're not familiar with selfhosting, follow one of these guides:
 
 [If you know your way around selfhosting and Docker, follow this guide.](./docs/installation-guides/advanced/advanced.md)
 
+## Fork notes (stream-stall fixes)
+
+- Stream responses carry `behaviorHints.seeders` and a `👤 <seeders>` description line (read by AIOStreams). The `seeders` field is typed via `patches/@types__stremio-addon-sdk.patch`; after editing a patch, update its `patch_hash` entries in `pnpm-lock.yaml` (base32 md5 of the LF-normalized patch, or regenerate with `pnpm patch-commit`).
+- The Dockerfile pins pnpm 9.12.2 via corepack, installs with `--frozen-lockfile`, sets `GIN_MODE=release` and has a HEALTHCHECK on the torrent server (`/torrents`). Build the image on a machine with enough memory, not the HA host.
+- The former image-only `sed` patch on `dist/.../stream.service.js` is now part of the source; drop that step from whatever builds the `svc-fix` image.
+
 ## Roadmap
 
 - [x] Admin panel for torrents

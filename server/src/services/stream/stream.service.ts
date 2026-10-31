@@ -53,6 +53,7 @@ export class StreamService {
       behaviorHints: {
         notWebReady: true,
         bingeGroup: torrent.infoHash,
+        seeders: torrent.getSeeders(),
       },
     };
   }
@@ -102,7 +103,7 @@ export class StreamService {
 
     const typeLine = `${languageEmoji} | ${torrent.displayResolution(torrent.getResolution(file.name))} | ${fileSizeString}\n`;
     const title = isShow ? `${file.name}\n` : `${torrent.getName()}\n`;
-    const seeders = `⬆️ ${torrent.getSeeders()}\n`;
+    const seeders = `👤 ${torrent.getSeeders()}\n`;
     return warningLine + recommendedLine + typeLine + title + seeders;
   }
 
