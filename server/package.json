@@ -7,7 +7,7 @@
     "start": "node --env-file ../.env ../dist/server/index.js",
     "build": "rm -rf ../dist/server && tsc && tsc-alias && cp -r src/db/migrations ../dist/server/db/migrations",
     "typecheck": "tsc --noemit",
-    "test": "jest",
+    "test": "vitest run",
     "db:generate": "ADDON_DIR=downloads drizzle-kit generate --name"
   },
   "dependencies": {
