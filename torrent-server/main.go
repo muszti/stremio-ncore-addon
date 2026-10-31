@@ -200,15 +200,13 @@ func main() {
 	})
 
 	r.POST("/torrents/:infoHash/download", func(c *gin.Context) {
-		infoHash := c.Param("infoHash")
-		torrent, ok := client.Torrent(infohash.FromHexString(infoHash))
+		torrent, ok := lookupTorrent(c, client)
 		if !ok {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Torrent not found"})
 			return
 		}
 		// Not persisted: has to be requested again if the server restarts before completion
 		torrent.DownloadAll()
-		c.JSON(http.StatusOK, responses.TorrentToResponse(torrent))
+		c.JSON(http.StatusOK, responses.TorrentToResponse(torrent, false))
 	})
 
 	r.DELETE("/torrents/:infoHash", func(c *gin.Context) {
