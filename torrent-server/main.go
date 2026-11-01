@@ -32,8 +32,8 @@ type AddTorrentRequest struct {
 const (
 	// gotInfoTimeout bounds how long a request waits for torrent metadata.
 	gotInfoTimeout = 30 * time.Second
-	// streamReadahead is the readahead window of a streaming reader.
-	streamReadahead = 16 << 20
+	// defaultReadaheadMB is the default readahead window (MiB) of a streaming reader.
+	defaultReadaheadMB = 150
 )
 
 // verifySem limits concurrent background piece verifications.
@@ -111,6 +111,12 @@ func main() {
 	flag.BoolVar(&disableIPv6, "disable-ipv6", os.Getenv("TORRENT_DISABLE_IPV6") == "1", "Disable IPv6 for peer connections")
 
 	flag.Parse()
+
+	readaheadMB := envInt("TORRENT_READAHEAD_MB", defaultReadaheadMB)
+	if readaheadMB <= 0 {
+		readaheadMB = defaultReadaheadMB
+	}
+	streamReadahead := int64(readaheadMB) << 20
 
 	if port == 0 {
 		log.Fatal("Port flag is required")
@@ -319,9 +325,21 @@ func main() {
 			return
 		}
 
+		// Send the response headers right away, before the first (possibly slow)
+		// read, so clients and proxies do not time out waiting for the first piece.
+		c.Header("Content-Type", contentType)
+		c.Header("Content-Length", strconv.FormatInt(length, 10))
+		for k, v := range extraHeaders {
+			c.Header(k, v)
+		}
+		c.Status(status)
+		c.Writer.WriteHeaderNow()
+		c.Writer.Flush()
+
 		// Stream only the requested range
-		limitedReader := io.LimitReader(reader, length)
-		c.DataFromReader(status, length, contentType, limitedReader, extraHeaders)
+		if _, err := io.Copy(c.Writer, io.LimitReader(reader, length)); err != nil {
+			log.Printf("stream %s interrupted: %v", filepath, err)
+		}
 	})
 
 	baseCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
