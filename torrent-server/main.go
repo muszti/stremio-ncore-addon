@@ -20,7 +20,6 @@ import (
 
 	bittorrent "github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/metainfo"
-	"github.com/anacrolix/torrent/types"
 	rangeparser "github.com/detarkende/stremio-ncore-addon/torrent-server/internal/range-parser"
 	responses "github.com/detarkende/stremio-ncore-addon/torrent-server/internal/responses"
 	gin "github.com/gin-gonic/gin"
@@ -45,27 +44,6 @@ func envInt(name string, def int) int {
 		return v
 	}
 	return def
-}
-
-func envBool(name string, def bool) bool {
-	if v, err := strconv.ParseBool(os.Getenv(name)); err == nil {
-		return v
-	}
-	return def
-}
-
-// deselectAllFiles stops every file of the torrent from downloading on its own.
-// Pieces are then fetched only for readers (streams) or explicit file selection.
-func deselectAllFiles(t *bittorrent.Torrent) {
-	select {
-	case <-t.GotInfo():
-	case <-time.After(5 * time.Second):
-		log.Printf("deselect: no metadata yet for %s", t.InfoHash().HexString())
-		return
-	}
-	for _, f := range t.Files() {
-		f.SetPriority(types.PiecePriorityNone)
-	}
 }
 
 // parseInfoHash parses a hex info hash without panicking on bad input.
@@ -125,15 +103,12 @@ func main() {
 	var downloadDir string
 	var establishedConns, halfOpenConns int
 	var disableIPv6 bool
-	var deselectOthers bool
 
 	flag.IntVar(&port, "p", 0, "Port to run the server on")
 	flag.StringVar(&downloadDir, "d", "", "Directory to store downloads")
 	flag.IntVar(&establishedConns, "max-conns", envInt("TORRENT_MAX_CONNS", 0), "Max established peer connections per torrent (0 = library default)")
 	flag.IntVar(&halfOpenConns, "max-half-open", envInt("TORRENT_MAX_HALF_OPEN", 0), "Max half-open peer connections per torrent (0 = library default)")
 	flag.BoolVar(&disableIPv6, "disable-ipv6", os.Getenv("TORRENT_DISABLE_IPV6") == "1", "Disable IPv6 for peer connections")
-
-	flag.BoolVar(&deselectOthers, "deselect-others", envBool("TORRENT_DESELECT_OTHERS", true), "Download only the file requested for streaming; keep other files deselected")
 
 	flag.Parse()
 
