@@ -197,7 +197,7 @@ func main() {
 		if !ok {
 			return
 		}
-		c.JSON(http.StatusOK, responses.TorrentToResponse(torrent, c.Query("files") != "0"))
+		c.JSON(http.StatusOK, responses.WithPieceStats(responses.TorrentToResponse(torrent, c.Query("files") != "0"), torrent))
 	})
 
 	// Plain-text dump of peers, trackers and piece state for debugging stalled torrents

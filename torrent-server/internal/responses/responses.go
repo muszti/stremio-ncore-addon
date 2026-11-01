@@ -18,6 +18,43 @@ type TorrentResponse struct {
 	Size       int64         `json:"size"`
 	Downloaded int64         `json:"downloaded"`
 	Files      []TorrentFile `json:"files"`
+
+	// Peer diagnostics (cheap; present on every response).
+	ActivePeers      int `json:"activePeers"`
+	HalfOpenPeers    int `json:"halfOpenPeers"`
+	PendingPeers     int `json:"pendingPeers"`
+	TotalPeers       int `json:"totalPeers"`
+	ConnectedSeeders int `json:"connectedSeeders"`
+
+	// Piece diagnostics: only filled by WithPieceStats (single-torrent endpoint);
+	// omitted from list responses because they walk the piece state.
+	PiecesComplete     *int  `json:"piecesComplete,omitempty"`
+	PiecesTotal        *int  `json:"piecesTotal,omitempty"`
+	PiecesMissing      *int  `json:"piecesMissing,omitempty"`
+	MissingPieceSample []int `json:"missingPieceSample,omitempty"`
+}
+
+// WithPieceStats fills the piece counters and up to 10 missing piece indices.
+// Uses PieceStateRuns (run-length encoded), so cost is O(runs), not O(pieces)
+// for the counts. Intended for GET /torrents/:infoHash only, not the list.
+func WithPieceStats(r TorrentResponse, torrent *bittorrent.Torrent) TorrentResponse {
+	const sampleMax = 10
+	total, complete := 0, 0
+	sample := []int{}
+	for _, run := range torrent.PieceStateRuns() {
+		if run.Complete {
+			complete += run.Length
+		} else {
+			for i := 0; i < run.Length && len(sample) < sampleMax; i++ {
+				sample = append(sample, total+i)
+			}
+		}
+		total += run.Length
+	}
+	missing := total - complete
+	r.PiecesComplete, r.PiecesTotal, r.PiecesMissing = &complete, &total, &missing
+	r.MissingPieceSample = sample
+	return r
 }
 
 // ratio returns done/total, treating an empty total as fully complete so the
@@ -44,7 +81,13 @@ func TorrentToResponse(torrent *bittorrent.Torrent, withFiles bool) TorrentRespo
 			})
 		}
 	}
+	st := torrent.Stats()
 	response := TorrentResponse{
+		ActivePeers:      st.ActivePeers,
+		HalfOpenPeers:    st.HalfOpenPeers,
+		PendingPeers:     st.PendingPeers,
+		TotalPeers:       st.TotalPeers,
+		ConnectedSeeders: st.ConnectedSeeders,
 		InfoHash:   torrent.InfoHash().String(),
 		Name:       torrent.Name(),
 		Progress:   ratio(torrent.BytesCompleted(), torrent.Length()),
